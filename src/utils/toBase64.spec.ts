@@ -1,0 +1,13 @@
+import { toBase64 } from './toBase64';
+
+describe('toBase64', () => {
+	it('should convert Uint8Array to base64 string', () => {
+		expect(
+			toBase64(
+				new Uint8Array([
+					0x7e, 0xdb, 0x26, 0x94, 0x49, 0x36, 0x43, 0xbf, 0xe2, 0xf8, 0xb1, 0x8c, 0x8a, 0xe4, 0xe1, 0x0f, 0x49, 0xd6, 0x52, 0x72,
+				]),
+			),
+		).toStrictEqual('ftsmlEk2Q7/i+LGMiuThD0nWUnI=');
+	});
+});
