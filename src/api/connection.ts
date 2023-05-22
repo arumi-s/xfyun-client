@@ -170,15 +170,15 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	protected onResponse(response: Res) {
-		return null;
+	protected onResponse(response: Res): void {
+		return;
 	}
 
-	protected onResponseSuccess(response: Res) {
+	protected onResponseSuccess(response: Res): void {
 		this.response = response;
 	}
 
-	protected onResponseFail(response: Res) {
+	protected onResponseFail(response: Res): void {
 		console.log(response);
 	}
 
