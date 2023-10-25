@@ -1,4 +1,4 @@
-import { BehaviorSubject, concatMap, delay, delayWhen, filter, finalize, firstValueFrom, of, Subject } from 'rxjs';
+import { BehaviorSubject, concatMap, delay, delayWhen, filter, finalize, firstValueFrom, Observable, of, Subject } from 'rxjs';
 import { resample } from '../utils/resample';
 import { to16BitPCM } from '../utils/to16BitPCM';
 import { splitInChunks } from '../utils/splitInChunks';
@@ -7,9 +7,7 @@ import { ApiOption, AuthOption } from './option';
 import type { ApiRequest } from './request';
 import { ApiResponse } from './response';
 import { toBase64 } from '../utils/toBase64';
-
-const chuckLength = 1280;
-const chuckDelay = 40;
+import { chuckLength, chuckDelay } from '../utils/const';
 
 export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiRequest = ApiRequest, Res extends ApiResponse = ApiResponse> {
 	protected option: O;
@@ -17,7 +15,16 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	protected response!: Res;
 	protected sid = '';
 	protected $status = new BehaviorSubject<ApiConnectionStatus>(ApiConnectionStatus.null);
+
+	/**
+	 * A stream of 16 bit PCM data.
+	 */
 	protected $audio = new Subject<Uint8Array>();
+
+	/**
+	 * A stream of 16 bit PCM data chunked into `chuckLength` and seperated temporally by `chuckDelay`.
+	 */
+	protected $chunked: Observable<Uint8Array>;
 
 	protected Option(): O {
 		return new ApiOption() as O;
@@ -30,56 +37,70 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	constructor(option: Partial<O> & AuthOption) {
 		this.option = Object.assign(this.Option(), option);
 
-		this.$audio
-			.pipe(
-				delayWhen(() => this.$status.pipe(filter((status) => status === ApiConnectionStatus.ready || status === ApiConnectionStatus.ing))),
-				splitInChunks(chuckLength),
-				concatMap((x) => of(x).pipe(delay(chuckDelay))),
-				finalize(() => this.sendEnd()),
-			)
-			.subscribe((buffer) => this.sendAudio(buffer));
+		this.$chunked = this.$audio.pipe(
+			delayWhen(() => this.$status.pipe(filter((status) => status === ApiConnectionStatus.ready || status === ApiConnectionStatus.ing))),
+			splitInChunks(chuckLength),
+			concatMap((x) => of(x).pipe(delay(chuckDelay))),
+			finalize(() => this.sendEnd()),
+		);
+
+		this.$chunked.subscribe((buffer) => this.sendAudio(buffer));
 	}
 
-	protected setStatus(status: ApiConnectionStatus) {
+	protected setStatus(status: ApiConnectionStatus): void {
 		if (this.$status.value !== status) {
 			this.$status.next(status);
 		}
 	}
 
-	getStatus() {
-		return this.$status.asObservable();
-	}
-
-	getSid() {
+	getSid(): string {
 		return this.sid;
 	}
 
-	async sendAudioBuffer(audioBuffer: AudioBuffer) {
+	getStatus(): Observable<ApiConnectionStatus> {
+		return this.$status.asObservable();
+	}
+
+	/**
+	 * @returns the {@link $audio}
+	 */
+	getAudio(): Observable<Uint8Array> {
+		return this.$audio.asObservable();
+	}
+
+	/**
+	 * @returns the {@link $chunked}
+	 */
+	getChunked(): Observable<Uint8Array> {
+		return this.$chunked;
+	}
+
+	async sendAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
 		const sourceBuffer = audioBuffer.getChannelData(0);
 
 		return await this.sendBuffer(sourceBuffer, audioBuffer.sampleRate);
 	}
 
-	async sendBuffer(sourceBuffer: Float32Array, sampleRate: number) {
+	async sendBuffer(sourceBuffer: Float32Array, sampleRate: number): Promise<void> {
 		const buffer = resample(sourceBuffer, sampleRate, this.option.sampleRate);
 
 		return await this.send16kBuffer(buffer);
 	}
 
-	async send16kBuffer(buffer: Float32Array) {
+	async send16kBuffer(buffer: Float32Array): Promise<void> {
 		this.$audio.next(to16BitPCM(buffer));
 
 		return Promise.resolve();
 	}
 
-	async complete() {
+	async complete(): Promise<Res> {
 		this.$audio.complete();
 		await firstValueFrom(this.$status.pipe(filter((status) => status === ApiConnectionStatus.result)));
 		this.$status.complete();
 		return this.response;
 	}
 
-	async connect() {
+	async connect(): Promise<void> {
 		if (this.option.test) {
 			this.setStatus(ApiConnectionStatus.init);
 			this.setStatus(ApiConnectionStatus.ready);
@@ -137,11 +158,11 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 		} as const as any;
 	}
 
-	protected sendRequest(request: Req) {
+	protected sendRequest(request: Req): void {
 		this.webSocket.send(JSON.stringify(request));
 	}
 
-	protected sendAudio(audioChunk: Uint8Array) {
+	protected sendAudio(audioChunk: Uint8Array): void {
 		const data = toBase64(audioChunk);
 		if (this.$status.value === ApiConnectionStatus.ready) {
 			this.setStatus(ApiConnectionStatus.ing);
@@ -157,7 +178,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 		}
 	}
 
-	protected sendEnd() {
+	protected sendEnd(): void {
 		if (!this.option.test) {
 			const wrapped = this.wrapEnd();
 			if (wrapped) this.sendRequest(wrapped);
@@ -182,7 +203,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 		console.log(response);
 	}
 
-	protected setResponse(response: Res) {
+	protected setResponse(response: Res): void {
 		if (response) {
 			if (this.sid === '') {
 				this.sid = response.sid;
@@ -204,7 +225,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 		}
 	}
 
-	getResponse() {
+	getResponse(): Res {
 		return this.response;
 	}
 }

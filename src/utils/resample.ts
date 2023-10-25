@@ -1,4 +1,4 @@
-export const resample = (sourceBuffer: Float32Array, sampleRate: number, newSampleRate: number) => {
+export const resample = (sourceBuffer: Float32Array, sampleRate: number, newSampleRate: number): Float32Array => {
 	const data = new Float32Array(sourceBuffer);
 	const fitCount = Math.round(data.length * (newSampleRate / sampleRate));
 	const buffer = new Float32Array(fitCount);

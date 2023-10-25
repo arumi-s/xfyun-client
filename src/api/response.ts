@@ -2,10 +2,10 @@ export class ApiResponse {
 	sid = '';
 	data!: any;
 
-	isSuccess() {
+	isSuccess(): boolean {
 		return true;
 	}
-	isEnd() {
+	isEnd(): boolean {
 		return true;
 	}
 }
