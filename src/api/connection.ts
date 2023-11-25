@@ -15,6 +15,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	protected response!: Res;
 	protected sid = '';
 	protected $status = new BehaviorSubject<ApiConnectionStatus>(ApiConnectionStatus.null);
+	protected error: Error | null = null;
 
 	/**
 	 * A stream of 16 bit PCM data.
@@ -95,8 +96,15 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 
 	async complete(): Promise<Res> {
 		this.$audio.complete();
-		await firstValueFrom(this.$status.pipe(filter((status) => status === ApiConnectionStatus.result)));
+		const status = await firstValueFrom(
+			this.$status.pipe(filter((status) => status === ApiConnectionStatus.result || status === ApiConnectionStatus.error)),
+		);
+
 		this.$status.complete();
+
+		if (status === ApiConnectionStatus.error) {
+			throw this.error;
+		}
 		return this.response;
 	}
 
@@ -200,7 +208,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	}
 
 	protected onResponseFail(response: Res): void {
-		console.log(response);
+		throw new Error(`error ${response.code}: ${response.message}`);
 	}
 
 	protected setResponse(response: Res): void {
@@ -221,7 +229,14 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 			}
 		} else {
 			this.webSocket?.close();
-			this.onResponseFail(response);
+			this.setStatus(ApiConnectionStatus.error);
+			try {
+				this.onResponseFail(response);
+			} catch (err: unknown) {
+				if (err instanceof Error) {
+					this.error = err;
+				}
+			}
 		}
 	}
 

@@ -1,4 +1,4 @@
-import type { ApiResponse } from '../api';
+import { ApiResponse } from '../api';
 
 export enum IseResponseDataStatus {
 	START = 0,
@@ -11,16 +11,8 @@ export interface IseResponseData {
 	data: string | null;
 }
 
-export class IseResponse implements ApiResponse {
-	sid = '';
-	code = -1;
-	message = '';
-
+export class IseResponse extends ApiResponse {
 	data!: IseResponseData;
-
-	isSuccess() {
-		return this.code === 0;
-	}
 
 	isEnd() {
 		return this.data?.status === IseResponseDataStatus.END;

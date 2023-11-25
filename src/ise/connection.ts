@@ -68,8 +68,4 @@ export class IseConnection extends ApiConnection<IseOption, IseRequest, IseRespo
 			},
 		} as const;
 	}
-
-	protected override onResponseFail(response: IseResponse) {
-		throw new Error(`Error ${response.code}: ${response.message}`);
-	}
 }

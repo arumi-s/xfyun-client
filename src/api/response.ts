@@ -1,10 +1,14 @@
 export class ApiResponse {
 	sid = '';
-	data!: any;
+	code = -1;
+	message: string = '';
+
+	data!: unknown;
 
 	isSuccess(): boolean {
-		return true;
+		return this.code === 0;
 	}
+
 	isEnd(): boolean {
 		return true;
 	}

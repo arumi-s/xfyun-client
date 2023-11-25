@@ -62,8 +62,4 @@ export class IatConnection extends ApiConnection<IatOption, IatRequest, IatRespo
 			}
 		}
 	}
-
-	protected override onResponseFail(response: IatResponse) {
-		throw new Error(`Error ${response.code}: ${response.message}`);
-	}
 }

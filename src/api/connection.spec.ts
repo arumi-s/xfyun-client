@@ -1,5 +1,5 @@
 import { setTimeout } from 'timers/promises';
-import { ApiConnection, ApiConnectionStatus } from './';
+import { ApiConnection, ApiConnectionStatus, ApiResponse } from './';
 import WS from 'jest-websocket-mock';
 
 const mockAudioData = new Float32Array([
@@ -54,11 +54,11 @@ describe('ApiConnection', () => {
 
 		connection.getStatus().subscribe((status) => {
 			if (status === ApiConnectionStatus.end) {
-				void setTimeout(40).then(() => server.send({ sid: '000', data: 'xyz' }));
+				void setTimeout(80).then(() => server.send({ sid: '000', code: 0, data: 'xyz' }));
 			}
 		});
 
-		await connection.complete();
+		await expect(connection.complete()).resolves.toBeInstanceOf(ApiResponse);
 
 		expect(statusSubscriber).toHaveBeenNthCalledWith(4, ApiConnectionStatus.ing);
 		expect(statusSubscriber).toHaveBeenNthCalledWith(5, ApiConnectionStatus.end);
@@ -68,8 +68,8 @@ describe('ApiConnection', () => {
 		const response = connection.getResponse();
 		expect(response.sid).toStrictEqual('000');
 		expect(response.data).toStrictEqual('xyz');
-		expect(response.isEnd()).toStrictEqual(true);
 		expect(response.isSuccess()).toStrictEqual(true);
+		expect(response.isEnd()).toStrictEqual(true);
 
 		expect(server).toHaveReceivedMessages([
 			{
@@ -102,5 +102,29 @@ describe('ApiConnection', () => {
 				},
 			},
 		]);
+	});
+
+	it('should throw error', async () => {
+		const statusSubscriber = jest.fn();
+		connection.getStatus().subscribe(statusSubscriber);
+
+		await connection.connect();
+
+		expect(statusSubscriber).toHaveBeenNthCalledWith(1, ApiConnectionStatus.null);
+		expect(statusSubscriber).toHaveBeenNthCalledWith(2, ApiConnectionStatus.init);
+		expect(statusSubscriber).toHaveBeenNthCalledWith(3, ApiConnectionStatus.ready);
+
+		await connection.sendBuffer(mockAudioData, 1000);
+		await setTimeout(40);
+		server.send({ sid: '000', code: 10000, message: 'Some error occurred.' });
+
+		await expect(connection.complete()).rejects.toThrow(new Error('error 10000: Some error occurred.'));
+
+		expect(statusSubscriber).toHaveBeenNthCalledWith(4, ApiConnectionStatus.ing);
+		expect(statusSubscriber).toHaveBeenNthCalledWith(5, ApiConnectionStatus.error);
+
+		expect(connection.getSid()).toStrictEqual('000');
+		const response = connection.getResponse();
+		expect(response).toBeUndefined();
 	});
 });

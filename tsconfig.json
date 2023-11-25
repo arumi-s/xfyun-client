@@ -12,6 +12,7 @@
 		"esModuleInterop": true,
 		"sourceMap": true,
 		"removeComments": false,
+		"useDefineForClassFields": false,
 		"forceConsistentCasingInFileNames": true
 	},
 	"exclude": ["dist", "node_modules", "**/*.spec.ts", "*.config.ts"]
