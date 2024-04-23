@@ -16,6 +16,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	protected $webSocket!: WebSocketSubject<Req | Res>;
 	protected sid = '';
 	protected $status = new BehaviorSubject<ApiConnectionStatus>(ApiConnectionStatus.null);
+	protected firstSent = false;
 	protected error: Error | null = null;
 
 	/**
@@ -175,12 +176,16 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	}
 
 	protected sendRequest(request: Req): void {
+		const status = this.$status.value;
+		if (status === ApiConnectionStatus.error) return;
+
 		this.$webSocket.next(request);
 	}
 
 	protected sendAudio(audioChunk: Uint8Array): void {
+		const status = this.$status.value;
 		const data = toBase64(audioChunk);
-		if (this.$status.value === ApiConnectionStatus.ready) {
+		if (status < ApiConnectionStatus.ing) {
 			this.setStatus(ApiConnectionStatus.ing);
 			if (!this.option.test) {
 				const wrapped = this.wrapAudioFirst(data);
