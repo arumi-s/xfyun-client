@@ -27,6 +27,11 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	 */
 	protected $chunked: Observable<Uint8Array>;
 
+	/**
+	 * Messages to send to WebSocket
+	 */
+	protected $message = new Subject<string>();
+
 	protected Option(): O {
 		return new ApiOption() as O;
 	}
@@ -39,13 +44,20 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 		this.option = Object.assign(this.Option(), option);
 
 		this.$chunked = this.$audio.pipe(
-			delayWhen(() => this.$status.pipe(filter((status) => status === ApiConnectionStatus.ready || status === ApiConnectionStatus.ing))),
 			splitInChunks(chuckLength),
 			concatMap((x) => of(x).pipe(delay(chuckDelay))),
 			finalize(() => this.sendEnd()),
 		);
 
 		this.$chunked.subscribe((buffer) => this.sendAudio(buffer));
+
+		this.$message
+			.pipe(
+				delayWhen(() => this.$status.pipe(filter((status) => status === ApiConnectionStatus.ready || status === ApiConnectionStatus.ing))),
+			)
+			.subscribe((message) => {
+				this.webSocket.send(message);
+			});
 	}
 
 	protected setStatus(status: ApiConnectionStatus): void {
@@ -91,7 +103,13 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	async send16kBuffer(buffer: Float32Array): Promise<void> {
 		this.$audio.next(to16BitPCM(buffer));
 
-		return Promise.resolve();
+		return await Promise.resolve();
+	}
+
+	async send16BitPCMBuffer(buffer: Uint8Array): Promise<void> {
+		this.$audio.next(buffer);
+
+		return await Promise.resolve();
 	}
 
 	async complete(): Promise<Res> {
@@ -167,7 +185,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	}
 
 	protected sendRequest(request: Req): void {
-		this.webSocket.send(JSON.stringify(request));
+		this.$message.next(JSON.stringify(request));
 	}
 
 	protected sendAudio(audioChunk: Uint8Array): void {
