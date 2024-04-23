@@ -1,4 +1,5 @@
-import { BehaviorSubject, concatMap, delay, delayWhen, filter, finalize, firstValueFrom, Observable, of, Subject } from 'rxjs';
+import { BehaviorSubject, concatMap, delay, filter, finalize, firstValueFrom, Observable, of, Subject } from 'rxjs';
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 import { resample } from '../utils/resample';
 import { to16BitPCM } from '../utils/to16BitPCM';
 import { splitInChunks } from '../utils/splitInChunks';
@@ -11,8 +12,8 @@ import { chuckLength, chuckDelay } from '../utils/const';
 
 export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiRequest = ApiRequest, Res extends ApiResponse = ApiResponse> {
 	protected option: O;
-	protected webSocket!: WebSocket;
 	protected response!: Res;
+	protected $webSocket!: WebSocketSubject<Req | Res>;
 	protected sid = '';
 	protected $status = new BehaviorSubject<ApiConnectionStatus>(ApiConnectionStatus.null);
 	protected error: Error | null = null;
@@ -26,11 +27,6 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	 * A stream of 16 bit PCM data chunked into `chuckLength` and seperated temporally by `chuckDelay`.
 	 */
 	protected $chunked: Observable<Uint8Array>;
-
-	/**
-	 * Messages to send to WebSocket
-	 */
-	protected $message = new Subject<string>();
 
 	protected Option(): O {
 		return new ApiOption() as O;
@@ -50,14 +46,6 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 		);
 
 		this.$chunked.subscribe((buffer) => this.sendAudio(buffer));
-
-		this.$message
-			.pipe(
-				delayWhen(() => this.$status.pipe(filter((status) => status === ApiConnectionStatus.ready || status === ApiConnectionStatus.ing))),
-			)
-			.subscribe((message) => {
-				this.webSocket.send(message);
-			});
 	}
 
 	protected setStatus(status: ApiConnectionStatus): void {
@@ -133,25 +121,27 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 			return;
 		}
 		return new Promise<void>((resolve, reject) => {
-			try {
-				this.webSocket = new WebSocket(this.option.wsUrl);
-			} catch (e: unknown) {
-				reject(e);
-			}
 			this.setStatus(ApiConnectionStatus.init);
+			this.$webSocket = webSocket({
+				url: this.option.wsUrl,
+				openObserver: {
+					next: () => {
+						this.setStatus(ApiConnectionStatus.ready);
+						resolve();
+					},
+				},
+			});
 
-			this.webSocket.onopen = () => {
-				this.setStatus(ApiConnectionStatus.ready);
-				resolve();
-			};
-			this.webSocket.onmessage = (event: MessageEvent<string>) => {
-				const response = Object.assign(this.Response(), JSON.parse(event.data) as Res);
-				this.setResponse(response);
-			};
-			this.webSocket.onerror = () => {
-				this.setStatus(ApiConnectionStatus.error);
-				reject(new Error('unable to connect'));
-			};
+			this.$webSocket.subscribe({
+				next: (msg) => {
+					const response = Object.assign(this.Response(), msg);
+					this.setResponse(response);
+				},
+				error: () => {
+					this.setStatus(ApiConnectionStatus.error);
+					reject((this.error = new Error('unable to connect')));
+				},
+			});
 		});
 	}
 
@@ -185,7 +175,7 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 	}
 
 	protected sendRequest(request: Req): void {
-		this.$message.next(JSON.stringify(request));
+		this.$webSocket.next(request);
 	}
 
 	protected sendAudio(audioChunk: Uint8Array): void {
@@ -243,10 +233,10 @@ export class ApiConnection<O extends ApiOption = ApiOption, Req extends ApiReque
 			if (response.isEnd()) {
 				this.setStatus(ApiConnectionStatus.result);
 
-				this.webSocket?.close();
+				this.$webSocket?.complete();
 			}
 		} else {
-			this.webSocket?.close();
+			this.$webSocket?.complete();
 			this.setStatus(ApiConnectionStatus.error);
 			try {
 				this.onResponseFail(response);

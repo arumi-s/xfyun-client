@@ -104,7 +104,19 @@ describe('ApiConnection', () => {
 		]);
 	});
 
-	it('should throw error', async () => {
+	it('should throw connection error', async () => {
+		const statusSubscriber = jest.fn();
+		connection = new ApiConnection({ appId: 'abc', wsUrl: 'ws://notexist' });
+		connection.getStatus().subscribe(statusSubscriber);
+
+		await expect(connection.connect()).rejects.toThrow(new Error('unable to connect'));
+
+		expect(statusSubscriber).toHaveBeenNthCalledWith(1, ApiConnectionStatus.null);
+		expect(statusSubscriber).toHaveBeenNthCalledWith(2, ApiConnectionStatus.init);
+		expect(statusSubscriber).toHaveBeenNthCalledWith(3, ApiConnectionStatus.error);
+	});
+
+	it('should throw error send by server', async () => {
 		const statusSubscriber = jest.fn();
 		connection.getStatus().subscribe(statusSubscriber);
 
